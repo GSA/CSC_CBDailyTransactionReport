@@ -1,5 +1,5 @@
 import re
-
+import utils as ut
 import pandas as pd
 import extn_utils as extn
 import send_emails_smtp as se
@@ -7,9 +7,11 @@ from datetime import date, timedelta
 from googleapiclient.errors import HttpError
 import common as c
 import base64
+import os
 filenameList=[];
+
 today = date.today()
-#today = today - timedelta(days=2)
+#today = today - timedelta(days=1) # edit this line to change the number of days that you like to go back to run the report.
 print(today)
 query ="after: {} from: {} subject: {}".format(today.strftime('%Y/%m/%d'),'No-Reply-OMS@fas.gsa.gov','Report: Automated Camp Butler Daily Transactions Report')
 print(query)
@@ -46,18 +48,18 @@ def executequery(filtered_df):
     allitemno = "('" + "'),('".join(filtered_df['Part Number']) + "')"
     sqlquery = "WITH cte AS (SELECT distinct [Part Number] FROM (VALUES" + allitemno + ") AS T([Part Number])) SELECT c.*, PICS_VENDORPARTNO as VendorPartno FROM cte c left join PICS_CATALOG p  on p.[4PLPARTNO] = c.[Part Number]"
     print(sqlquery);
-    return extn.executequery(sqlquery);
+    return extn.executequery(sqlquery,dburl);
 
 def sendemail():
     finalBody = '<p>This report reflects daily transactions for the referenced store and date.</p><p>For questions please contact Vanessa Winter (vanessa.winter@gsa.gov).</p><p>For additional metrics, please visit: https://d2d.gsa.gov/report/grsc-enterprise-4pl-solutions</p>'
     subject = f'Report: Automated Camp Butler Daily Transactions Report-{fileDate}'
     filename = f'Automated Camp Butler Daily Transactions Report-{fileDate}.xlsx'
-    #emailAddress = 'shristi.amatya@gsa.gov'
-    emailAddress = 'josephe.brown@gsa.gov'
-    #allCCEmailAddress = ''
-    allCCEmailAddress = 'masami.nagahama.ja@usmc.mil,junko.takahashi@gsa.gov,yoshihiro.aikawa@gsa.gov,tsuyoshi.furugen@gsa.gov,DSSC.GSA.MCBB.FCT@usmc.mil,maria.abrecea@gsa.gov,vanessa.winter@gsa.gov,masami.manna@gsa.gov,evelyn.seiler@gsa.gov,brandy.untalan@gsa.gov,katelyn.young@gsa.gov,shristi.amatya@gsa.gov'
-    fromEmail = 'vanessa.winter@gsa.gov'
-    #fromEmail = 'shristi.amatya@gsa.gov'
+    emailAddress = 'shristi.amatya@gsa.gov'
+    #emailAddress = 'josephe.brown@gsa.gov'
+    allCCEmailAddress = ''
+    #allCCEmailAddress = 'masami.nagahama.ja@usmc.mil,junko.takahashi@gsa.gov,yoshihiro.aikawa@gsa.gov,tsuyoshi.furugen@gsa.gov,DSSC.GSA.MCBB.FCT@usmc.mil,maria.abrecea@gsa.gov,vanessa.winter@gsa.gov,masami.manna@gsa.gov,evelyn.seiler@gsa.gov,brandy.untalan@gsa.gov,katelyn.young@gsa.gov,shristi.amatya@gsa.gov'
+    #fromEmail = 'vanessa.winter@gsa.gov'
+    fromEmail = 'shristi.amatya@gsa.gov'
     allBCCEmailAddress = ''
     try:
        #extn.setColumnWidthDynamically(attachment)
@@ -76,8 +78,15 @@ def getFileDate(file):
     return dateStr
 
 if __name__ == '__main__':
-   filenameList = getAttachmentFromInbox()
-   for file in filenameList:
+    dbconfig = ut.load_json("resources/extn/dburl.json")
+    operSys = extn.get_os_info()
+    if operSys.lower() == 'linux':
+        dburl = dbconfig.get('dburl_ux')
+    elif operSys.lower() == 'windows':
+        dburl = dbconfig.get('dburl_win')
+    os.environ["dburl"] = dburl
+    filenameList = getAttachmentFromInbox()
+    for file in filenameList:
         df = pd.read_excel(file)
         sqloutput_df = executequery(df);
         merged_df = pd.merge(df, sqloutput_df, on='Part Number', how='left');
